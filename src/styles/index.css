@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Smooth scroll and modern feel */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Nice focus outline */
+*:focus-visible {
+  outline: 2px solid rgb(161 161 170);
+  outline-offset: 2px;
+}
