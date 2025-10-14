@@ -57,14 +57,20 @@ function capitalizeFirst(s: string): string {
 
 export async function decomposeWithGemini(input: string): Promise<string[]> {
   if (!input || !input.trim()) return [];
-  const { getGeminiClient } = await import("./aiClient");
+  const { getGeminiClient, getRuntimeGeminiModel } = await import("./aiClient");
   const ai = getGeminiClient();
   const prompt = buildDecompositionPrompt(input);
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: getRuntimeGeminiModel(),
     contents: prompt,
   });
-  const text = response.text;
+  let text = "" as string;
+  const anyRes: any = response as any;
+  if (typeof anyRes.text === "function") {
+    text = await anyRes.text();
+  } else if (typeof anyRes.text === "string") {
+    text = anyRes.text as string;
+  }
   const parsed = tryParseTasksFromText(text);
   if (parsed.length > 0) return parsed;
   // フォールバック: AI 出力が期待形式でない場合はローカル分解に委ねる
