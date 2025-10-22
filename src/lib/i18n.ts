@@ -125,6 +125,7 @@ const extraJa: Dict = {
   // WBS
   "nav.wbs": "WBS",
   "wbs.title": "WBS",
+  "wbs.pyramidTitle": "ピラミッド",
   "wbs.addChild": "子タスクを追加",
   "wbs.addSibling": "同じ階層に追加",
   "wbs.indent": "インデント",
@@ -137,6 +138,8 @@ const extraJa: Dict = {
   "wbs.start": "開始",
   "wbs.due": "期限",
   "wbs.progress": "進捗",
+  "wbs.levelHeading": "レベル %n",
+  "wbs.levelShort": "L%n",
 }
 
 let current: Dict = { ...ja, ...extraJa }
