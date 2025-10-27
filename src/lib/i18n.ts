@@ -1,4 +1,4 @@
-type Dict = Record<string, string>
+type Dict = Record<string, string>;
 
 const ja: Dict = {
   // Common
@@ -34,7 +34,8 @@ const ja: Dict = {
   "settings.dataSource": "データソース",
   "settings.dataSource.local": "ローカル（ブラウザ保存）",
   "settings.dataSource.http": "HTTP（API サーバー）",
-  "settings.dataSource.httpDisabled": "HTTP は無効化されています。環境変数 VITE_FF_TASK_BACKEND=true で有効化できます。",
+  "settings.dataSource.httpDisabled":
+    "HTTP は無効化されています。環境変数 VITE_FF_TASK_BACKEND=true で有効化できます。",
   "settings.ai": "AI 設定",
   "settings.ai.model": "モデル",
   "settings.ai.model.flash": "Gemini 2.5 Flash（高速）",
@@ -76,6 +77,13 @@ const ja: Dict = {
   "decompose.addAll": "すべて追加",
   "decompose.defaultDue": "既定の期限",
   "decompose.goKanban": "追加後にカンバンへ移動",
+  "decompose.voiceInput": "音声入力",
+  "decompose.voiceRecording": "録音中...",
+  "decompose.voiceStop": "停止",
+  "decompose.voiceCancel": "キャンセル",
+  "decompose.voiceTranscribing": "文字起こし中...",
+  "decompose.voiceError": "音声認識に失敗しました",
+  "decompose.voiceNoKey": "OpenAI APIキーが設定されていません",
 
   // Calendar
   "calendar.title": "カレンダー",
@@ -114,17 +122,17 @@ const ja: Dict = {
   "task.drawer.start": "開始",
   "task.drawer.due": "期限",
   "task.drawer.attachments": "添付",
-  "task.drawer.attachments.note": "アップロードは後続のAPI接続で有効になります。",
+  "task.drawer.attachments.note":
+    "アップロードは後続のAPI接続で有効になります。",
   "task.drawer.clear": "クリア",
   "task.drawer.invalidDate": "開始日は期限以前である必要があります",
-  
-}
+};
 
 // Additional feature dictionaries can be merged here without touching the base block above.
 const extraJa: Dict = {
   // WBS
-  "nav.wbs": "WBS",
-  "wbs.title": "WBS",
+  "nav.wbs": "タスク一覧",
+  "wbs.title": "タスク一覧",
   "wbs.pyramidTitle": "ピラミッド",
   "wbs.addChild": "子タスクを追加",
   "wbs.addSibling": "同じ階層に追加",
@@ -140,10 +148,10 @@ const extraJa: Dict = {
   "wbs.progress": "進捗",
   "wbs.levelHeading": "レベル %n",
   "wbs.levelShort": "L%n",
-}
+};
 
-let current: Dict = { ...ja, ...extraJa }
+let current: Dict = { ...ja, ...extraJa };
 
 export function t(key: string): string {
-  return current[key] ?? key
+  return current[key] ?? key;
 }
