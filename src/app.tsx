@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react"
 import { decomposeWithGemini } from "@/lib/decomposer"
+import { FF_KANBAN } from "@/lib/flags"
+import { AppRouted } from "@/app-routed"
 
 type Todo = {
   id: string
@@ -8,6 +10,9 @@ type Todo = {
 }
 
 export const App: React.FC = () => {
+  if (FF_KANBAN) {
+    return <AppRouted />
+  }
   const [input, setInput] = useState("")
   const [todos, setTodos] = useState<Todo[]>([])
   const [theme, setTheme] = useState<"system" | "dark" | "light">("system")
