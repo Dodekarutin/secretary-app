@@ -16,7 +16,7 @@ import {
 } from "@/lib/aiClient";
 import { navigate } from "@/lib/router";
 import { useAudioRecorder } from "@/lib/use-audio-recorder";
-import { Sparkles, Mic, Square, X, Circle } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export const DecomposerRoot: React.FC = () => {
   const { adapter } = useAdapter();
@@ -168,23 +168,39 @@ export const DecomposerRoot: React.FC = () => {
   }
 
   async function handleStopRecording() {
+    // 録音時間が短すぎる場合は自動キャンセル
+    if (recorder.duration < 2) {
+      recorder.cancelRecording();
+      setError("録音時間が短すぎます（最低2秒）");
+      return;
+    }
+
     try {
       setTranscribing(true);
       setError(null);
       const audioBlob = await recorder.stopRecording();
       const transcribed = await transcribeAudio(audioBlob);
-      setText((prev) => (prev ? `${prev}\n${transcribed}` : transcribed));
+
+      // 文字起こし結果が空または無意味な場合は追加しない
+      const trimmed = transcribed.trim();
+      const isValid =
+        trimmed &&
+        trimmed.length > 0 &&
+        !trimmed.match(
+          /^(ご視聴ありがとうございました|thank you for watching|\.+|…+)$/i
+        );
+
+      if (isValid) {
+        setText((prev) => (prev ? `${prev}\n${trimmed}` : trimmed));
+      } else {
+        setError("音声を認識できませんでした");
+      }
     } catch (err) {
       console.error("音声認識エラー:", err);
       setError(t("decompose.voiceError"));
     } finally {
       setTranscribing(false);
     }
-  }
-
-  function handleCancelRecording() {
-    recorder.cancelRecording();
-    setError(null);
   }
 
   const canAdd = project && targetColumnId && selected.size > 0;
@@ -276,7 +292,7 @@ export const DecomposerRoot: React.FC = () => {
             {loading ? t("decompose.loading") : t("decompose.run")}
           </button>
 
-          {recorder.state === "idle" && (
+          {recorder.state === "idle" ? (
             <button
               type="button"
               onClick={handleVoiceInput}
@@ -284,36 +300,47 @@ export const DecomposerRoot: React.FC = () => {
               disabled={transcribing || !hasOpenAIKey}
               title={!hasOpenAIKey ? t("decompose.voiceNoKey") : ""}
             >
-              <Mic className="h-4 w-4" />
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
               {transcribing
                 ? t("decompose.voiceTranscribing")
                 : t("decompose.voiceInput")}
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStopRecording}
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-red-700 hover:to-red-800 hover:shadow-lg"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              {t("decompose.voiceStop")}
+            </button>
           )}
 
           {recorder.state === "recording" && (
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-2 text-sm text-red-600 font-medium">
-                <Circle className="h-3 w-3 fill-red-600 animate-pulse" />
-                {t("decompose.voiceRecording")} {recorder.duration}秒
-              </span>
-              <button
-                type="button"
-                onClick={handleStopRecording}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-600 to-green-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-green-700 hover:to-green-800 hover:shadow-lg"
+            <span className="inline-flex items-center gap-2 text-sm text-red-600 font-medium dark:text-red-400">
+              <svg
+                className="h-3 w-3 animate-pulse"
+                viewBox="0 0 24 24"
+                fill="currentColor"
               >
-                <Square className="h-4 w-4" />
-                {t("decompose.voiceStop")}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelRecording}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-zinc-500 to-zinc-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-zinc-600 hover:to-zinc-700 hover:shadow-lg"
-              >
-                <X className="h-4 w-4" />
-                {t("decompose.voiceCancel")}
-              </button>
-            </div>
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+              {t("decompose.voiceRecording")} {recorder.duration}秒
+            </span>
           )}
 
           {error && <span className="text-sm text-red-500">{error}</span>}
