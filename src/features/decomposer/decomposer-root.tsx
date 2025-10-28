@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { t } from "@/lib/i18n";
-import { decomposeWithGemini, decomposeRequirements } from "@/lib/decomposer";
+import {
+  decomposeWithGemini,
+  decomposeRequirements,
+  decomposeWithGeminiStructured,
+  flattenTasks,
+  type DecomposedTask,
+} from "@/lib/decomposer";
 import { useAdapter } from "@/adapters/adapter-context";
 import type { Column, Id, Project } from "@/types/domain";
 import {
@@ -19,8 +25,8 @@ export const DecomposerRoot: React.FC = () => {
   const [targetColumnId, setTargetColumnId] = useState<Id | "">("");
 
   const [text, setText] = useState("");
-  const [items, setItems] = useState<string[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [items, setItems] = useState<DecomposedTask[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set()); // インデックスからパスに変更
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [defaultDue, setDefaultDue] = useState<string | "">("");
@@ -50,19 +56,41 @@ export const DecomposerRoot: React.FC = () => {
     run();
   }, []);
 
+  // 全タスクのパスを取得
+  const getAllPaths = (tasks: DecomposedTask[], prefix = ""): string[] => {
+    const paths: string[] = [];
+    tasks.forEach((task, idx) => {
+      const path = prefix ? `${prefix}.${idx}` : `${idx}`;
+      paths.push(path);
+      if (task.children) {
+        paths.push(...getAllPaths(task.children, path));
+      }
+    });
+    return paths;
+  };
+
   function toggleAll(next: boolean) {
     if (next) {
-      setSelected(new Set(items.map((_, i) => i)));
+      setSelected(new Set(getAllPaths(items)));
     } else {
       setSelected(new Set());
     }
   }
 
-  function toggleIndex(i: number) {
+  function togglePath(path: string) {
     setSelected((prev) => {
       const s = new Set(prev);
-      if (s.has(i)) s.delete(i);
-      else s.add(i);
+      if (s.has(path)) {
+        // 選択解除: 自分と子孫を全て解除
+        s.delete(path);
+        const childPrefix = path + ".";
+        Array.from(s).forEach((p) => {
+          if (p.startsWith(childPrefix)) s.delete(p);
+        });
+      } else {
+        // 選択: 自分を追加
+        s.add(path);
+      }
       return s;
     });
   }
@@ -72,24 +100,48 @@ export const DecomposerRoot: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      let out: string[] = [];
+      let out: DecomposedTask[] = [];
       try {
-        out = await decomposeWithGemini(text);
+        out = await decomposeWithGeminiStructured(text);
       } catch (e) {
         setError(t("decompose.error"));
-        out = decomposeRequirements(text);
+        const flatTasks = decomposeRequirements(text);
+        out = flatTasks.map((title) => ({ title }));
       }
       setItems(out);
-      setSelected(new Set(out.map((_, i) => i)));
+      setSelected(new Set(getAllPaths(out)));
     } finally {
       setLoading(false);
     }
   }
 
-  async function addTasks(indices: number[]) {
+  async function addTasks(paths: string[]) {
     if (!project || !targetColumnId) return;
-    const list = indices.map((i) => items[i]).filter(Boolean);
-    for (const title of list) {
+
+    // パスからタスクを取得
+    const getTaskByPath = (
+      tasks: DecomposedTask[],
+      path: string
+    ): DecomposedTask | null => {
+      const indices = path.split(".").map(Number);
+      let current: DecomposedTask[] = tasks;
+      for (const idx of indices) {
+        if (!current[idx]) return null;
+        if (idx === indices[indices.length - 1]) {
+          return current[idx];
+        }
+        current = current[idx].children || [];
+      }
+      return null;
+    };
+
+    const tasksToAdd: string[] = [];
+    paths.forEach((path) => {
+      const task = getTaskByPath(items, path);
+      if (task) tasksToAdd.push(task.title);
+    });
+
+    for (const title of tasksToAdd) {
       const t = await adapter.addTask(project.id, targetColumnId, title);
       if (defaultDue) {
         await adapter.updateTask(t.id, { dueDate: defaultDue });
@@ -136,6 +188,60 @@ export const DecomposerRoot: React.FC = () => {
   }
 
   const canAdd = project && targetColumnId && selected.size > 0;
+
+  // 階層表示用のコンポーネント
+  const TaskTreeItem: React.FC<{
+    task: DecomposedTask;
+    path: string;
+    level: number;
+  }> = ({ task, path, level }) => {
+    const isSelected = selected.has(path);
+    const hasChildren = task.children && task.children.length > 0;
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    return (
+      <li className="mb-2">
+        <div
+          className="flex items-start gap-2"
+          style={{ paddingLeft: `${level * 20}px` }}
+        >
+          {hasChildren && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="mt-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              {isExpanded ? "▼" : "▶"}
+            </button>
+          )}
+          {!hasChildren && <span className="w-4" />}
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => togglePath(path)}
+            className="mt-0.5"
+          />
+          <div
+            className={`text-sm flex-1 ${level === 0 ? "font-semibold" : ""}`}
+          >
+            {task.title}
+          </div>
+        </div>
+        {hasChildren && isExpanded && (
+          <ul className="mt-1">
+            {task.children!.map((child, idx) => (
+              <TaskTreeItem
+                key={`${path}.${idx}`}
+                task={child}
+                path={`${path}.${idx}`}
+                level={level + 1}
+              />
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -237,16 +343,9 @@ export const DecomposerRoot: React.FC = () => {
         {items.length === 0 ? (
           <div className="text-sm text-zinc-500">{t("dashboard.none")}</div>
         ) : (
-          <ul className="space-y-2">
-            {items.map((it, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={selected.has(i)}
-                  onChange={() => toggleIndex(i)}
-                />
-                <div className="text-sm">{it}</div>
-              </li>
+          <ul className="space-y-1">
+            {items.map((task, idx) => (
+              <TaskTreeItem key={idx} task={task} path={`${idx}`} level={0} />
             ))}
           </ul>
         )}
@@ -330,7 +429,7 @@ export const DecomposerRoot: React.FC = () => {
             type="button"
             disabled={!project || !targetColumnId || items.length === 0}
             className="rounded-lg bg-gradient-to-r from-accent-600 to-accent-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-accent-700 hover:to-accent-800 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => addTasks(items.map((_, i) => i))}
+            onClick={() => addTasks(getAllPaths(items))}
           >
             {t("decompose.addAll")}
           </button>
