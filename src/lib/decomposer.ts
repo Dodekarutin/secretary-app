@@ -2,6 +2,10 @@ const SEPARATORS = ["\n", "・", "- ", "— ", "→", "。", "；", ";", "。", 
 
 export type DecomposedTask = {
   title: string;
+  // ISO (YYYY-MM-DD) 開始日（Gemini 推定、任意）
+  startDate?: string;
+  // ISO (YYYY-MM-DD) 終了日（Gemini 推定、任意）
+  dueDate?: string;
   children?: DecomposedTask[];
 };
 
@@ -89,6 +93,7 @@ export async function decomposeWithGeminiStructured(
   const { getGeminiClient, getRuntimeGeminiModel } = await import("./aiClient");
   const ai = getGeminiClient();
   const prompt = buildStructuredDecompositionPrompt(input);
+  console.log("Sending prompt to Gemini:", prompt);
   const response = await ai.models.generateContent({
     model: getRuntimeGeminiModel(),
     contents: prompt,
@@ -100,7 +105,9 @@ export async function decomposeWithGeminiStructured(
   } else if (typeof anyRes.text === "string") {
     text = anyRes.text as string;
   }
+  console.log("Gemini raw response:", text);
   const parsed = tryParseStructuredTasksFromText(text);
+  console.log("Parsed tasks:", parsed);
   if (parsed.length > 0) return parsed;
   // フォールバック: フラットなタスクリストから階層構造を推測
   const flatTasks = decomposeRequirements(text);
@@ -125,37 +132,72 @@ function buildDecompositionPrompt(userInput: string): string {
 }
 
 function buildStructuredDecompositionPrompt(userInput: string): string {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const in3Days = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const in7Days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const in10Days = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const in12Days = new Date(today.getTime() + 12 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
   return [
     "あなたは優秀なタスク分解エージェントです。",
     "与えられた曖昧な要求・要望を、階層構造を持った実行可能な具体的なタスクに分解してください。",
     "",
     "出力要件:",
     "- JSON 配列で返す。各要素は以下の形式:",
-    '  { "title": "タスク名", "children": [ サブタスク配列（省略可） ] }',
+    '  { "title": "タスク名", "startDate": "YYYY-MM-DD"(省略可), "dueDate": "YYYY-MM-DD"(省略可), "children": [ サブタスク配列（省略可） ] }',
     "- title は短い命令形（例: 'ログイン機能を実装'）",
-    "- children は任意。サブタスクがある場合のみ含める（再帰的に同じ構造）",
-    "- 階層は最大3レベルまで（親 > 子 > 孫）",
+    "- startDate: タスク開始予定日（ISO形式 YYYY-MM-DD）",
+    "- dueDate: タスク終了予定日（ISO形式 YYYY-MM-DD）",
+    "- children は任意。サブタスクがある場合のみ含める（再帰的に同じ構造、任意の深さまで対応）",
+    "- 階層の深さに制限はない。必要に応じて親 > 子 > 孫 > ひ孫... と深い階層を作成可能",
+    "- ただし、実用性を考慮して適切な粒度で分解する（通常は3〜5階層程度が目安）",
     "- 余計な前置き、解説、コードブロックは一切出力しない。JSON配列のみを返す。",
+    "",
+    "日付設定の原則:",
+    `- 今日の日付: ${todayStr}`,
+    "- 全タスクの開始日・終了日は今日以降の未来日を設定",
+    "- 親タスクの期間は全子タスクを包含する（親.startDate <= 全子の最小startDate、親.dueDate >= 全子の最大dueDate）",
+    "- 兄弟タスク間で依存関係がある場合は、後続タスクの開始日を前タスクの終了日以降に設定",
+    "- 各タスクは現実的な工数を考慮（1日〜数週間程度）",
+    "- 不明な場合のみ省略可",
     "",
     "分解のポイント:",
     "- 大きな機能は親タスクとして、その実装ステップを子タスクに分ける",
+    "- 複雑な子タスクはさらに孫タスク、ひ孫タスクへと分解可能",
     "- 粒度: 画面/状態管理/API/バリデーション/テスト/文書化",
     "- 依存関係を意識して順序を並べる",
     "- 日本語で書く",
     "- 各階層で重複を避ける",
-    "- 全体で最大30タスク（子タスク含む）",
+    "- 全体で最大50タスク（全階層の子タスク含む）",
     "",
-    "例:",
+    "例（3階層の場合）:",
     "[",
     "  {",
     '    "title": "ユーザー認証機能を実装",',
+    `    "startDate": "${todayStr}",`,
+    `    "dueDate": "${in10Days}",`,
     '    "children": [',
-    '      { "title": "ログインフォームを作成" },',
-    '      { "title": "認証APIを実装" },',
-    '      { "title": "セッション管理を追加" }',
+    "      {",
+    `        "title": "ログインフォームを作成", "startDate": "${todayStr}", "dueDate": "${in3Days}",`,
+    '        "children": [',
+    `          { "title": "UIコンポーネントを実装", "startDate": "${todayStr}", "dueDate": "${todayStr}" },`,
+    `          { "title": "バリデーションロジックを追加", "startDate": "${todayStr}", "dueDate": "${in3Days}" }`,
+    "        ]",
+    "      },",
+    `      { "title": "認証APIを実装", "startDate": "${in3Days}", "dueDate": "${in7Days}" },`,
+    `      { "title": "セッション管理を追加", "startDate": "${in7Days}", "dueDate": "${in10Days}" }`,
     "    ]",
     "  },",
-    '  { "title": "ドキュメントを更新" }',
+    `  { "title": "ドキュメントを更新", "startDate": "${in10Days}", "dueDate": "${in12Days}" }`,
     "]",
     "",
     "入力:",
@@ -205,29 +247,83 @@ function dedupe(items: string[]): string[] {
 }
 
 function tryParseStructuredTasksFromText(text: string): DecomposedTask[] {
-  if (!text) return [];
+  if (!text) {
+    console.log("tryParse: empty text");
+    return [];
+  }
 
   // JSON 配列を抽出
   const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return [];
+  if (!match) {
+    console.log("tryParse: no JSON array found in text");
+    return [];
+  }
 
   try {
+    console.log("tryParse: attempting to parse:", match[0].slice(0, 200));
     const parsed = JSON.parse(match[0]);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      console.log("tryParse: parsed result is not an array");
+      return [];
+    }
+
+    console.log("tryParse: parsed array length:", parsed.length);
 
     // 型チェックとバリデーション
-    const validateTask = (obj: any): obj is DecomposedTask => {
-      if (typeof obj !== "object" || obj === null) return false;
-      if (typeof obj.title !== "string" || !obj.title.trim()) return false;
+    const validateTask = (obj: any, path = ""): obj is DecomposedTask => {
+      if (typeof obj !== "object" || obj === null) {
+        console.log(`Validation failed at ${path}: not an object`);
+        return false;
+      }
+      if (typeof obj.title !== "string" || !obj.title.trim()) {
+        console.log(`Validation failed at ${path}: invalid title`);
+        return false;
+      }
+      if (obj.startDate !== undefined) {
+        if (typeof obj.startDate !== "string") {
+          console.log(`Validation failed at ${path}: startDate not a string`);
+          return false;
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.startDate)) {
+          console.log(
+            `Validation failed at ${path}: startDate invalid format: ${obj.startDate}`
+          );
+          return false;
+        }
+      }
+      if (obj.dueDate !== undefined) {
+        if (typeof obj.dueDate !== "string") {
+          console.log(`Validation failed at ${path}: dueDate not a string`);
+          return false;
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.dueDate)) {
+          console.log(
+            `Validation failed at ${path}: dueDate invalid format: ${obj.dueDate}`
+          );
+          return false;
+        }
+      }
       if (obj.children !== undefined) {
-        if (!Array.isArray(obj.children)) return false;
-        return obj.children.every(validateTask);
+        if (!Array.isArray(obj.children)) {
+          console.log(`Validation failed at ${path}: children not an array`);
+          return false;
+        }
+        return obj.children.every((child: any, i: number) =>
+          validateTask(child, `${path}.children[${i}]`)
+        );
       }
       return true;
     };
 
-    const tasks = parsed.filter(validateTask);
-    if (tasks.length === 0) return [];
+    const tasks = parsed.filter((t: any, i: number) =>
+      validateTask(t, `[${i}]`)
+    );
+    console.log("tryParse: validated tasks count:", tasks.length);
+
+    if (tasks.length === 0) {
+      console.log("tryParse: no valid tasks after validation");
+      return [];
+    }
 
     // 重複除去（階層的に）
     return dedupeStructured(tasks);
@@ -247,6 +343,8 @@ function dedupeStructured(tasks: DecomposedTask[]): DecomposedTask[] {
     seen.add(key);
 
     const dedupedTask: DecomposedTask = { title: task.title.trim() };
+    if (task.startDate) dedupedTask.startDate = task.startDate;
+    if (task.dueDate) dedupedTask.dueDate = task.dueDate;
     if (task.children && task.children.length > 0) {
       dedupedTask.children = dedupeStructured(task.children);
     }

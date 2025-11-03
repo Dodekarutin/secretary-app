@@ -14,6 +14,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true, // ポートが使用中の場合はエラーにする（自動的に別ポートにしない）
     open: true,
   },
 });

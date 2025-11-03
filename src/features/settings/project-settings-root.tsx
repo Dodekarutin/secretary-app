@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import type { Project, Member, User, Role } from "@/types/domain";
 import { useAdapter } from "@/adapters/adapter-context";
 import { t } from "@/lib/i18n";
 import { getSettings, updateSettings, clearSetting } from "@/lib/settings";
 import { TagsSettings } from "@/features/settings/tags-settings";
 import { FF_TASK_BACKEND } from "@/lib/flags";
+import {
+  downloadBackup,
+  downloadLocalStorageBackup,
+  importFromFile,
+} from "@/lib/backup";
 
 export const ProjectSettingsRoot: React.FC = () => {
   const { adapter, kind, setKind } = useAdapter();
@@ -24,6 +29,8 @@ export const ProjectSettingsRoot: React.FC = () => {
   const [newMemberRole, setNewMemberRole] = useState<Role>("editor");
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectIdState] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -57,6 +64,43 @@ export const ProjectSettingsRoot: React.FC = () => {
       setProject(updated);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleExport() {
+    try {
+      if (kind === "local") {
+        downloadLocalStorageBackup(
+          `secretary-backup-${new Date().toISOString().slice(0, 10)}.json`
+        );
+      } else {
+        await downloadBackup(
+          `secretary-backup-${new Date().toISOString().slice(0, 10)}.json`
+        );
+      }
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(t("settings.backup.importError"));
+    }
+  }
+
+  async function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      await importFromFile(file, kind === "local");
+      alert(t("settings.backup.importSuccess"));
+      window.location.reload();
+    } catch (error) {
+      console.error("Import failed:", error);
+      alert(t("settings.backup.importError"));
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }
 
@@ -204,7 +248,7 @@ export const ProjectSettingsRoot: React.FC = () => {
       </section>
       <section className="rounded-lg border border-zinc-200/70 bg-white/70 p-4 shadow-soft dark:border-zinc-700/60 dark:bg-zinc-900/70">
         <h2 className="mb-2 text-sm font-medium">{t("settings.dataSource")}</h2>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="mb-2 flex flex-col gap-2 text-sm">
           <label className="inline-flex items-center gap-2">
             <input
               type="radio"
@@ -213,6 +257,15 @@ export const ProjectSettingsRoot: React.FC = () => {
               onChange={() => setKind("local")}
             />
             {t("settings.dataSource.local")}
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="radio"
+              name="data-source"
+              checked={kind === "indexeddb"}
+              onChange={() => setKind("indexeddb")}
+            />
+            {t("settings.dataSource.indexeddb")}
           </label>
           <label className="inline-flex items-center gap-2 opacity-100">
             <input
@@ -225,11 +278,50 @@ export const ProjectSettingsRoot: React.FC = () => {
             {t("settings.dataSource.http")}
           </label>
         </div>
+        <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          <div className="font-medium mb-1">現在のオリジン:</div>
+          <div className="font-mono">{window.location.origin}</div>
+          <div className="mt-2">{t("settings.dataSource.originWarning")}</div>
+        </div>
         {!FF_TASK_BACKEND && (
           <div className="mt-2 text-xs text-zinc-500">
             {t("settings.dataSource.httpDisabled")}
           </div>
         )}
+      </section>
+
+      <section className="rounded-lg border border-zinc-200/70 bg-white/70 p-4 shadow-soft dark:border-zinc-700/60 dark:bg-zinc-900/70">
+        <h2 className="mb-2 text-sm font-medium">{t("settings.backup")}</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          {t("settings.backup.description")}
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <button
+            type="button"
+            className="rounded bg-brand-600 px-4 py-2 text-white hover:bg-brand-700"
+            onClick={handleExport}
+          >
+            {t("settings.backup.export")}
+          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImport}
+              className="hidden"
+              id="backup-file-input"
+            />
+            <label
+              htmlFor="backup-file-input"
+              className="cursor-pointer rounded bg-accent-600 px-4 py-2 text-white hover:bg-accent-700"
+            >
+              {importing
+                ? t("settings.backup.importing")
+                : t("settings.backup.import")}
+            </label>
+          </div>
+        </div>
       </section>
       <section className="rounded-lg border border-zinc-200/70 bg-white/70 p-4 shadow-soft dark:border-zinc-700/60 dark:bg-zinc-900/70">
         <h2 className="mb-2 text-sm font-medium">{t("settings.members")}</h2>

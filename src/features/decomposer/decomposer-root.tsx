@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { t } from "@/lib/i18n";
 import {
   decomposeWithGemini,
@@ -16,7 +16,19 @@ import {
 } from "@/lib/aiClient";
 import { navigate } from "@/lib/router";
 import { useAudioRecorder } from "@/lib/use-audio-recorder";
-import { Sparkles, Mic, Square, X, Circle } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import {
+  addTaskHierarchy,
+  type DecomposedTaskWithMeta,
+} from "@/lib/task-hierarchy";
+import {
+  saveDraft,
+  loadDraft,
+  deleteDraft,
+  getLastDraft,
+  generateDraftTitle,
+  listDrafts,
+} from "@/lib/decomposer-storage";
 
 export const DecomposerRoot: React.FC = () => {
   const { adapter } = useAdapter();
@@ -32,6 +44,12 @@ export const DecomposerRoot: React.FC = () => {
   const [defaultDue, setDefaultDue] = useState<string | "">("");
   const [goKanban, setGoKanban] = useState(true);
 
+  // 下書き管理
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [showDraftsList, setShowDraftsList] = useState(false);
+  const [drafts, setDrafts] = useState<any[]>([]);
+
   // 音声入力
   const recorder = useAudioRecorder();
   const [transcribing, setTranscribing] = useState(false);
@@ -43,18 +61,68 @@ export const DecomposerRoot: React.FC = () => {
       setProject(p);
       const cols = await adapter.getBoardColumns(p.id);
       setColumns(cols);
-      setTargetColumnId(cols[0]?.id ?? "");
-      // parse columnId from hash query if present
-      const hash = window.location.hash;
-      const qIndex = hash.indexOf("?");
-      if (qIndex >= 0) {
-        const qs = new URLSearchParams(hash.slice(qIndex + 1));
-        const col = qs.get("columnId");
-        if (col && cols.some((c) => c.id === col)) setTargetColumnId(col);
+      const todoCol =
+        cols.find((c) => c.name.toLowerCase() === "to do") ||
+        cols.find((c) => c.name.toLowerCase() === "todo") ||
+        null;
+      setTargetColumnId(todoCol?.id ?? cols[0]?.id ?? "");
+
+      // 最後の下書きを復元
+      const lastDraft = await getLastDraft(p.id);
+      if (lastDraft) {
+        setText(lastDraft.originalInput);
+        setItems(lastDraft.tasks as DecomposedTask[]);
+        setSelected(new Set(lastDraft.selected));
+        const todoColDraft =
+          cols.find((c) => c.name.toLowerCase() === "to do") ||
+          cols.find((c) => c.name.toLowerCase() === "todo") ||
+          null;
+        setTargetColumnId(todoColDraft?.id || cols[0]?.id || "");
+        setDefaultDue(lastDraft.defaultDue || "");
+        setCurrentDraftId(lastDraft.id);
       }
     };
     run();
   }, []);
+
+  // 自動保存機能（debounce付き）
+  useEffect(() => {
+    if (!autoSaveEnabled || !project) return;
+    if (items.length === 0 && !text.trim()) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const title = generateDraftTitle(text, items);
+        const draft = await saveDraft({
+          id: currentDraftId || undefined,
+          projectId: project.id,
+          originalInput: text,
+          tasks: items,
+          selected: Array.from(selected),
+          targetColumnId: targetColumnId as string,
+          defaultDue: defaultDue || undefined,
+          title,
+        });
+
+        if (!currentDraftId) {
+          setCurrentDraftId(draft.id);
+        }
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    text,
+    items,
+    selected,
+    targetColumnId,
+    defaultDue,
+    autoSaveEnabled,
+    project,
+    currentDraftId,
+  ]);
 
   // 全タスクのパスを取得
   const getAllPaths = (tasks: DecomposedTask[], prefix = ""): string[] => {
@@ -103,8 +171,10 @@ export const DecomposerRoot: React.FC = () => {
       let out: DecomposedTask[] = [];
       try {
         out = await decomposeWithGeminiStructured(text);
+        console.log("Gemini structured result:", out);
       } catch (e) {
-        setError(t("decompose.error"));
+        console.error("Gemini decomposition failed:", e);
+        setError(`分解エラー: ${(e as any)?.message || "不明なエラー"}`);
         const flatTasks = decomposeRequirements(text);
         out = flatTasks.map((title) => ({ title }));
       }
@@ -115,7 +185,7 @@ export const DecomposerRoot: React.FC = () => {
     }
   }
 
-  async function addTasks(paths: string[]) {
+  async function addTasks(paths: string[], isAddAll = false) {
     if (!project || !targetColumnId) return;
 
     // パスからタスクを取得
@@ -135,21 +205,133 @@ export const DecomposerRoot: React.FC = () => {
       return null;
     };
 
-    const tasksToAdd: string[] = [];
-    paths.forEach((path) => {
-      const task = getTaskByPath(items, path);
-      if (task) tasksToAdd.push(task.title);
+    // ルートレベルのタスクのみを抽出（親子関係は addTaskHierarchy で処理）
+    const rootPaths = paths.filter((path) => {
+      // 他のパスの子でないものをルートとする
+      return !paths.some(
+        (otherPath) => path !== otherPath && path.startsWith(otherPath + ".")
+      );
     });
 
-    for (const title of tasksToAdd) {
-      const t = await adapter.addTask(project.id, targetColumnId, title);
-      if (defaultDue) {
-        await adapter.updateTask(t.id, { dueDate: defaultDue });
-      }
+    const tasksToAdd: DecomposedTask[] = [];
+    rootPaths.forEach((path) => {
+      const task = getTaskByPath(items, path);
+      if (task) tasksToAdd.push(task);
+    });
+
+    // 階層構造を保ったままタスクを追加
+    for (const task of tasksToAdd) {
+      const taskWithMeta: DecomposedTaskWithMeta = {
+        title: task.title,
+        startDate: (task as any).startDate,
+        dueDate: (task as any).dueDate,
+        children: task.children as DecomposedTaskWithMeta[] | undefined,
+      };
+
+      await addTaskHierarchy(adapter, project.id, targetColumnId, taskWithMeta);
     }
-    // feedback: clear selection
+
+    // 全て追加の場合は、分解結果を空にする
+    if (isAddAll) {
+      setItems([]);
+    } else {
+      // 追加したタスクを分解結果から削除
+      const removeTasksByPaths = (
+        tasks: DecomposedTask[],
+        pathsToRemove: string[]
+      ): DecomposedTask[] => {
+        const pathsSet = new Set(pathsToRemove);
+        
+        const filterTasks = (
+          taskList: DecomposedTask[],
+          currentPath: string
+        ): DecomposedTask[] => {
+          return taskList
+            .map((task, idx) => {
+              const taskPath = currentPath ? `${currentPath}.${idx}` : `${idx}`;
+              
+              // このタスク自体が削除対象かチェック
+              if (pathsSet.has(taskPath)) {
+                return null;
+              }
+              
+              // 子要素を再帰的にフィルタ
+              if (task.children && task.children.length > 0) {
+                const filteredChildren = filterTasks(task.children, taskPath);
+                return {
+                  ...task,
+                  children: filteredChildren.length > 0 ? filteredChildren : undefined,
+                };
+              }
+              
+              return task;
+            })
+            .filter((task): task is DecomposedTask => task !== null);
+        };
+        
+        return filterTasks(tasks, "");
+      };
+
+      // 追加したタスクを分解結果から削除（rootPathsを削除すると、その子孫も自動的に削除される）
+      const updatedItems = removeTasksByPaths(items, rootPaths);
+      setItems(updatedItems);
+    }
+
+    // 選択状態をクリア
     setSelected(new Set());
+    
+    // カンバン画面に遷移（オプション）
     if (goKanban) navigate("/kanban");
+  }
+
+  async function handleClearDraft() {
+    if (currentDraftId) {
+      await deleteDraft(currentDraftId);
+    }
+    setText("");
+    setItems([]);
+    setSelected(new Set());
+    setDefaultDue("");
+    setCurrentDraftId(null);
+    setError(null);
+  }
+
+  async function loadDrafts() {
+    if (!project) return;
+    const allDrafts = await listDrafts(project.id);
+    setDrafts(allDrafts);
+  }
+
+  async function handleLoadDraft(draftId: string) {
+    const draft = await loadDraft(draftId);
+    if (!draft) return;
+
+    setText(draft.originalInput);
+    setItems(draft.tasks as DecomposedTask[]);
+    setSelected(new Set(draft.selected));
+    const todoCol =
+      columns.find((c) => c.name.toLowerCase() === "to do") ||
+      columns.find((c) => c.name.toLowerCase() === "todo") ||
+      null;
+    setTargetColumnId(todoCol?.id || columns[0]?.id || "");
+    setDefaultDue(draft.defaultDue || "");
+    setCurrentDraftId(draft.id);
+    setShowDraftsList(false);
+  }
+
+  async function handleDeleteDraft(draftId: string) {
+    await deleteDraft(draftId);
+    if (currentDraftId === draftId) {
+      setCurrentDraftId(null);
+    }
+    await loadDrafts();
+  }
+
+  async function toggleDraftsList() {
+    if (!showDraftsList) {
+      await loadDrafts();
+    }
+    setShowDraftsList(!showDraftsList);
   }
 
   async function handleVoiceInput() {
@@ -168,23 +350,39 @@ export const DecomposerRoot: React.FC = () => {
   }
 
   async function handleStopRecording() {
+    // 録音時間が短すぎる場合は自動キャンセル
+    if (recorder.duration < 2) {
+      recorder.cancelRecording();
+      setError("録音時間が短すぎます（最低2秒）");
+      return;
+    }
+
     try {
       setTranscribing(true);
       setError(null);
       const audioBlob = await recorder.stopRecording();
       const transcribed = await transcribeAudio(audioBlob);
-      setText((prev) => (prev ? `${prev}\n${transcribed}` : transcribed));
+
+      // 文字起こし結果が空または無意味な場合は追加しない
+      const trimmed = transcribed.trim();
+      const isValid =
+        trimmed &&
+        trimmed.length > 0 &&
+        !trimmed.match(
+          /^(ご視聴ありがとうございました|thank you for watching|\.+|…+)$/i
+        );
+
+      if (isValid) {
+        setText((prev) => (prev ? `${prev}\n${trimmed}` : trimmed));
+      } else {
+        setError("音声を認識できませんでした");
+      }
     } catch (err) {
       console.error("音声認識エラー:", err);
       setError(t("decompose.voiceError"));
     } finally {
       setTranscribing(false);
     }
-  }
-
-  function handleCancelRecording() {
-    recorder.cancelRecording();
-    setError(null);
   }
 
   const canAdd = project && targetColumnId && selected.size > 0;
@@ -276,7 +474,7 @@ export const DecomposerRoot: React.FC = () => {
             {loading ? t("decompose.loading") : t("decompose.run")}
           </button>
 
-          {recorder.state === "idle" && (
+          {recorder.state === "idle" ? (
             <button
               type="button"
               onClick={handleVoiceInput}
@@ -284,37 +482,68 @@ export const DecomposerRoot: React.FC = () => {
               disabled={transcribing || !hasOpenAIKey}
               title={!hasOpenAIKey ? t("decompose.voiceNoKey") : ""}
             >
-              <Mic className="h-4 w-4" />
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
               {transcribing
                 ? t("decompose.voiceTranscribing")
                 : t("decompose.voiceInput")}
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStopRecording}
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-red-700 hover:to-red-800 hover:shadow-lg"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              {t("decompose.voiceStop")}
+            </button>
           )}
 
           {recorder.state === "recording" && (
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-2 text-sm text-red-600 font-medium">
-                <Circle className="h-3 w-3 fill-red-600 animate-pulse" />
-                {t("decompose.voiceRecording")} {recorder.duration}秒
-              </span>
-              <button
-                type="button"
-                onClick={handleStopRecording}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-600 to-green-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-green-700 hover:to-green-800 hover:shadow-lg"
+            <span className="inline-flex items-center gap-2 text-sm text-red-600 font-medium dark:text-red-400">
+              <svg
+                className="h-3 w-3 animate-pulse"
+                viewBox="0 0 24 24"
+                fill="currentColor"
               >
-                <Square className="h-4 w-4" />
-                {t("decompose.voiceStop")}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelRecording}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-zinc-500 to-zinc-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-zinc-600 hover:to-zinc-700 hover:shadow-lg"
-              >
-                <X className="h-4 w-4" />
-                {t("decompose.voiceCancel")}
-              </button>
-            </div>
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+              {t("decompose.voiceRecording")} {recorder.duration}秒
+            </span>
           )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleDraftsList}
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition-all hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            >
+              📋 下書き一覧
+            </button>
+
+            {(items.length > 0 || text.trim()) && (
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition-all hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                クリア
+              </button>
+            )}
+          </div>
 
           {error && <span className="text-sm text-red-500">{error}</span>}
         </div>
@@ -351,64 +580,7 @@ export const DecomposerRoot: React.FC = () => {
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-2">
-            <span>{t("decompose.targetColumn")}:</span>
-            <select
-              className="rounded border border-zinc-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              value={targetColumnId}
-              onChange={(e) => setTargetColumnId(e.target.value)}
-            >
-              {columns
-                .sort((a, b) => a.sortIndex - b.sortIndex)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <span>{t("decompose.defaultDue")}:</span>
-            <input
-              type="date"
-              className="rounded border border-zinc-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              value={defaultDue}
-              onChange={(e) => setDefaultDue(e.target.value)}
-            />
-            <button
-              type="button"
-              className="rounded bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800"
-              onClick={() =>
-                setDefaultDue(new Date().toISOString().slice(0, 10))
-              }
-            >
-              {t("date.today")}
-            </button>
-            <button
-              type="button"
-              className="rounded bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800"
-              onClick={() => {
-                const d = new Date();
-                d.setDate(d.getDate() + 1);
-                setDefaultDue(d.toISOString().slice(0, 10));
-              }}
-            >
-              {t("date.tomorrow")}
-            </button>
-            <button
-              type="button"
-              className="rounded bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800"
-              onClick={() => {
-                const d = new Date();
-                const day = d.getDay();
-                const diff = (6 - day + 7) % 7;
-                d.setDate(d.getDate() + diff);
-                setDefaultDue(d.toISOString().slice(0, 10));
-              }}
-            >
-              {t("date.endOfWeek")}
-            </button>
-          </label>
+          {/* 期日はGeminiが自動設定（追加先・期日選択UIを撤廃） */}
           <label className="ml-auto flex items-center gap-2">
             <input
               type="checkbox"
@@ -429,12 +601,67 @@ export const DecomposerRoot: React.FC = () => {
             type="button"
             disabled={!project || !targetColumnId || items.length === 0}
             className="rounded-lg bg-gradient-to-r from-accent-600 to-accent-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-accent-700 hover:to-accent-800 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => addTasks(getAllPaths(items))}
+            onClick={() => addTasks(getAllPaths(items), true)}
           >
             {t("decompose.addAll")}
           </button>
         </div>
       </div>
+
+      {/* 下書き一覧モーダル */}
+      {showDraftsList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-2xl rounded-lg border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">下書き一覧</h2>
+              <button
+                type="button"
+                onClick={() => setShowDraftsList(false)}
+                className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            {drafts.length === 0 ? (
+              <p className="py-8 text-center text-zinc-500 dark:text-zinc-400">
+                下書きはありません
+              </p>
+            ) : (
+              <div className="max-h-96 space-y-2 overflow-y-auto">
+                {drafts.map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleLoadDraft(draft.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                        {draft.title || "無題の下書き"}
+                      </div>
+                      <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                        {new Date(draft.updatedAt).toLocaleString("ja-JP")} •{" "}
+                        {draft.tasks.length} タスク
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDraft(draft.id)}
+                      className="rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                      title="削除"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
