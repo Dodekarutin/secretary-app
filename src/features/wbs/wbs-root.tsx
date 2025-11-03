@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { Project, Task } from "@/types/domain";
 import { useAdapter } from "@/adapters/adapter-context";
 import { TreeTable } from "@/components/wbs/tree-table";
+import { TaskDrawer } from "@/components/task/task-drawer";
 import { buildTree } from "@/lib/wbs-utils";
 import { t } from "@/lib/i18n";
 
@@ -9,6 +10,7 @@ export const WbsRoot: React.FC = () => {
   const { adapter } = useAdapter();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -131,8 +133,21 @@ export const WbsRoot: React.FC = () => {
           onAddChild={addChild}
           onAddSibling={addSibling}
           onRename={updateTitle}
+          onTaskClick={(task) => setOpenTaskId(task.id)}
         />
       </div>
+      <TaskDrawer
+        open={Boolean(openTaskId)}
+        task={tasks.find((t) => t.id === openTaskId) ?? null}
+        onClose={async () => {
+          setOpenTaskId(null);
+          // タスクドロワーで編集された可能性があるため、タスク一覧を再読み込み
+          if (project) {
+            const updatedTasks = await adapter.listTasks({ projectId: project.id });
+            setTasks(updatedTasks);
+          }
+        }}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Task } from "@/types/domain";
 import type { WbsNode } from "@/lib/wbs-utils";
 import {
@@ -95,6 +95,21 @@ export const TreeTable: React.FC<TreeTableProps> = ({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+
+  // デフォルトで全展開
+  useEffect(() => {
+    const allIds = new Set<string>();
+    function visit(nodes: WbsNode[]) {
+      nodes.forEach((node) => {
+        if (node.children.length > 0) {
+          allIds.add(node.id);
+          visit(node.children);
+        }
+      });
+    }
+    visit(tree);
+    setExpandedIds(allIds);
+  }, [tree]);
 
   const flatNodes = useMemo(() => {
     const flat = flattenTree(tree);
