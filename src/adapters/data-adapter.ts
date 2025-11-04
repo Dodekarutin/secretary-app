@@ -15,6 +15,7 @@ export interface DataAdapter {
   getTask(taskId: Id): Promise<Task | null>
   addTask(projectId: Id, columnId: Id, title: string): Promise<Task>
   updateTask(taskId: Id, patch: Partial<Pick<Task, "title" | "description" | "startDate" | "dueDate" | "progress" | "columnId" | "sortIndex" | "parentId" | "estimatedHours">>): Promise<Task | null>
+  removeTask(taskId: Id): Promise<void>
   moveTask(taskId: Id, toColumnId: Id, toIndex: number): Promise<void>
   reorderColumns(projectId: Id, ordered: { columnId: Id; sortIndex: number }[]): Promise<void>
 

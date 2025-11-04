@@ -19,7 +19,7 @@ export const WbsRoot: React.FC = () => {
       setTasks(await adapter.listTasks({ projectId: p.id }));
     };
     run();
-  }, []);
+  }, [adapter]);
 
   const tree = useMemo(() => buildTree(tasks), [tasks]);
 
@@ -28,27 +28,56 @@ export const WbsRoot: React.FC = () => {
   }
 
   async function addChild(parent: Task) {
-    const created = await adapter.addSubtask?.(parent.id, "New task");
-    if (created) await reload(parent.projectId);
+    try {
+      const created = await adapter.addSubtask?.(parent.id, "New task");
+      if (created) {
+        console.log("✅ 子タスクを追加しました:", created);
+        await reload(parent.projectId);
+      }
+    } catch (error) {
+      console.error("❌ 子タスクの追加に失敗:", error);
+      alert("タスクの追加に失敗しました: " + error);
+    }
   }
 
   async function addSibling(node: Task) {
-    if (!node.parentId) {
-      const created = await adapter.addTask(
-        node.projectId,
-        node.columnId,
-        "New task"
-      );
-      if (created) await reload(node.projectId);
-      return;
+    try {
+      if (!node.parentId) {
+        const created = await adapter.addTask(
+          node.projectId,
+          node.columnId,
+          "New task"
+        );
+        if (created) {
+          console.log("✅ ルートタスクを追加しました:", created);
+          await reload(node.projectId);
+        }
+        return;
+      }
+      const created = await adapter.addSubtask?.(node.parentId, "New task");
+      if (created) {
+        console.log("✅ 兄弟タスクを追加しました:", created);
+        await reload(node.projectId);
+      }
+    } catch (error) {
+      console.error("❌ タスクの追加に失敗:", error);
+      alert("タスクの追加に失敗しました: " + error);
     }
-    const created = await adapter.addSubtask?.(node.parentId, "New task");
-    if (created) await reload(node.projectId);
   }
 
   async function updateTitle(task: Task, title: string) {
     await adapter.updateTask(task.id, { title });
     await reload(task.projectId);
+  }
+
+  async function deleteTask(task: Task) {
+    try {
+      await adapter.removeTask(task.id);
+      await reload(task.projectId);
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+      alert("タスクの削除に失敗しました: " + error);
+    }
   }
 
   async function indent(task: Task) {
@@ -132,6 +161,7 @@ export const WbsRoot: React.FC = () => {
           tree={tree}
           onAddChild={addChild}
           onAddSibling={addSibling}
+          onDelete={deleteTask}
           onRename={updateTitle}
           onTaskClick={(task) => setOpenTaskId(task.id)}
         />

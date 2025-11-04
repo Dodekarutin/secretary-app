@@ -132,6 +132,64 @@ export function createIndexedDBAdapter(): DataAdapter {
       return updated;
     },
 
+    async removeTask(taskId: Id): Promise<void> {
+      const db = await getDB();
+      
+      // トランザクション開始前に、すべてのタスクと関連データを取得
+      const allTasks = await db.getAll("tasks");
+      const allChecklists = await db.getAll("checklist");
+      const allComments = await db.getAll("comments");
+      const allDeps = await db.getAll("dependencies");
+      
+      // 子タスクも再帰的に収集
+      const toDelete = new Set<Id>();
+      function collectChildren(tid: Id) {
+        toDelete.add(tid);
+        const children = allTasks.filter((t) => t.parentId === tid);
+        for (const c of children) {
+          collectChildren(c.id);
+        }
+      }
+      collectChildren(taskId);
+      
+      // 削除対象の関連データを収集
+      const checklistsToDelete = allChecklists.filter((cl) =>
+        toDelete.has(cl.taskId)
+      );
+      const commentsToDelete = allComments.filter((cm) =>
+        toDelete.has(cm.taskId)
+      );
+      const depsToDelete = allDeps.filter(
+        (dep) => toDelete.has(dep.taskId) || toDelete.has(dep.dependsOnTaskId)
+      );
+      
+      // トランザクションを開始して一括削除
+      const tx = db.transaction(
+        ["tasks", "checklist", "comments", "dependencies"],
+        "readwrite"
+      );
+      
+      // タスクを削除
+      for (const tid of toDelete) {
+        tx.objectStore("tasks").delete(tid);
+      }
+      
+      // 関連データを削除
+      for (const cl of checklistsToDelete) {
+        tx.objectStore("checklist").delete(cl.id);
+      }
+      
+      for (const cm of commentsToDelete) {
+        tx.objectStore("comments").delete(cm.id);
+      }
+      
+      for (const dep of depsToDelete) {
+        tx.objectStore("dependencies").delete(dep.id);
+      }
+      
+      await tx.done;
+    },
+
     async moveTask(taskId: Id, toColumnId: Id, toIndex: number): Promise<void> {
       const db = await getDB();
       const task = await db.get("tasks", taskId);

@@ -12,6 +12,7 @@ export type TreeTableProps = {
   tree: WbsNode[];
   onAddChild?: (task: Task) => void;
   onAddSibling?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
   onRename?: (task: Task, title: string) => void;
   onTaskClick?: (task: Task) => void;
 };
@@ -89,6 +90,7 @@ export const TreeTable: React.FC<TreeTableProps> = ({
   tree,
   onAddChild,
   onAddSibling,
+  onDelete,
   onRename,
   onTaskClick,
 }) => {
@@ -254,6 +256,12 @@ export const TreeTable: React.FC<TreeTableProps> = ({
               >
                 ステータス
               </th>
+              <th
+                className="px-4 py-3 text-center font-medium"
+                style={{ width: "150px" }}
+              >
+                {t("wbs.actions")}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -393,6 +401,60 @@ export const TreeTable: React.FC<TreeTableProps> = ({
                         ? "進行中"
                         : "未着手"}
                     </span>
+                  </td>
+
+                  {/* Actions Column */}
+                  <td className="px-2 py-3">
+                    <div className="flex items-center justify-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      {onAddChild && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddChild(task);
+                          }}
+                          className="rounded p-1.5 text-sm hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/30 dark:hover:text-brand-400"
+                          title={t("wbs.addChild")}
+                          aria-label={t("wbs.addChild")}
+                        >
+                          ↳
+                        </button>
+                      )}
+                      {onAddSibling && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddSibling(task);
+                          }}
+                          className="rounded p-1.5 text-sm hover:bg-accent-50 hover:text-accent-600 dark:hover:bg-accent-900/30 dark:hover:text-accent-400"
+                          title={t("wbs.addSibling")}
+                          aria-label={t("wbs.addSibling")}
+                        >
+                          ➕
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (
+                              window.confirm(
+                                t("wbs.deleteConfirm")
+                              )
+                            ) {
+                              onDelete(task);
+                            }
+                          }}
+                          className="rounded p-1.5 text-sm hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                          title={t("wbs.delete")}
+                          aria-label={t("wbs.delete")}
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

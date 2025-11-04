@@ -145,8 +145,10 @@ const extraJa: Dict = {
   "nav.wbs": "タスク一覧",
   "wbs.title": "タスク一覧",
   "wbs.pyramidTitle": "ピラミッド",
-  "wbs.addChild": "子タスクを追加",
-  "wbs.addSibling": "同じ階層に追加",
+  "wbs.addChild": "子タスクを追加（下の階層に追加）",
+  "wbs.addSibling": "同じ階層に追加（兄弟タスクを追加）",
+  "wbs.delete": "タスクを削除",
+  "wbs.deleteConfirm": "このタスクを削除しますか？\n※子タスクも一緒に削除されます。",
   "wbs.indent": "インデント",
   "wbs.outdent": "アウトデント",
   "wbs.expand": "展開",
@@ -159,6 +161,7 @@ const extraJa: Dict = {
   "wbs.progress": "進捗",
   "wbs.levelHeading": "レベル %n",
   "wbs.levelShort": "L%n",
+  "wbs.actions": "操作",
 };
 
 let current: Dict = { ...ja, ...extraJa };

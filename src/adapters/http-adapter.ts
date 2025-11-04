@@ -54,6 +54,7 @@ export function createHttpAdapter(baseUrl = "/api/v1"): DataAdapter {
       return await httpPost<Task>(`/projects/${projectId}/tasks`, { title, columnId })
     },
     async updateTask(taskId: Id, patchBody: Partial<Pick<Task, "title"|"description"|"startDate"|"dueDate"|"progress"|"columnId"|"sortIndex">>): Promise<Task | null> { return await httpPatch<Task>(`/tasks/${taskId}`, patchBody) },
+    async removeTask(taskId: Id): Promise<void> { await httpPost<void>(`/tasks/${taskId}:delete`, {}) },
     async moveTask(taskId: Id, toColumnId: Id, toIndex: number): Promise<void> {
       await httpPost<void>(`/tasks/${taskId}:move`, { toColumnId, toSortIndex: toIndex * 1000 })
     },

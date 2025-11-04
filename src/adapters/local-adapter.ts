@@ -506,6 +506,27 @@ export function createLocalAdapter(): DataAdapter {
       save(db);
       return t;
     },
+    async removeTask(taskId: Id): Promise<void> {
+      const db = load();
+      // 子タスクも再帰的に削除
+      const toDelete = new Set<Id>();
+      function collectChildren(tid: Id) {
+        toDelete.add(tid);
+        const children = db.tasks.filter((t) => t.parentId === tid);
+        children.forEach((c) => collectChildren(c.id));
+      }
+      collectChildren(taskId);
+      // タスクを削除
+      db.tasks = db.tasks.filter((t) => !toDelete.has(t.id));
+      // 関連データも削除
+      toDelete.forEach((tid) => {
+        db.checklist = db.checklist.filter((c) => c.taskId !== tid);
+        db.comments = db.comments.filter((c) => c.taskId !== tid);
+        db.taskTags = db.taskTags.filter((tt) => tt.taskId !== tid);
+        db.taskAssignees = db.taskAssignees.filter((ta) => ta.taskId !== tid);
+      });
+      save(db);
+    },
     async moveTask(taskId: Id, toColumnId: Id, toIndex: number): Promise<void> {
       const db = load();
       const task = db.tasks.find((t) => t.id === taskId);
