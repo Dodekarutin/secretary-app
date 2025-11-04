@@ -73,18 +73,6 @@ function getTaskTypeIcon(
   return { icon: "✓", color: "text-zinc-500", label: "タスク" };
 }
 
-function getPriorityIcon(progress: number): string {
-  if (progress >= 100) return "✓";
-  if (progress >= 50) return "▲";
-  if (progress > 0) return "●";
-  return "○";
-}
-
-function getPriorityColor(progress: number): string {
-  if (progress >= 100) return "text-green-600";
-  if (progress >= 50) return "text-orange-500";
-  return "text-red-500";
-}
 
 export const TreeTable: React.FC<TreeTableProps> = ({
   tree,
@@ -214,52 +202,25 @@ export const TreeTable: React.FC<TreeTableProps> = ({
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
             <tr>
-              <th
-                className="px-4 py-3 text-left font-medium"
-                style={{ minWidth: "400px" }}
-              >
+              <th className="px-4 py-3 text-left font-medium" style={{ minWidth: "300px" }}>
                 タスク
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "150px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "120px" }}>
                 進捗
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "80px" }}
-              >
-                優先度
-              </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "100px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "90px" }}>
                 所要時間
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "120px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "110px" }}>
                 開始日
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "120px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "110px" }}>
                 期限
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "100px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "100px" }}>
                 ステータス
               </th>
-              <th
-                className="px-4 py-3 text-center font-medium"
-                style={{ width: "150px" }}
-              >
+              <th className="px-4 py-3 text-center font-medium" style={{ width: "120px" }}>
                 {t("wbs.actions")}
               </th>
             </tr>
@@ -269,7 +230,6 @@ export const TreeTable: React.FC<TreeTableProps> = ({
               const { node, number, depth, hasChildren } = item;
               const { task } = node;
               const isExpanded = expandedIds.has(node.id);
-              const typeInfo = getTaskTypeIcon(depth, hasChildren);
 
               // Rollup calculations
               const rollHours = rollupEstimatedHours(node);
@@ -278,9 +238,6 @@ export const TreeTable: React.FC<TreeTableProps> = ({
                 0,
                 Math.min(100, Math.round(rollupProgressWeighted(node)))
               );
-
-              const priorityIcon = getPriorityIcon(rollProgress);
-              const priorityColor = getPriorityColor(rollProgress);
 
               return (
                 <tr
@@ -344,29 +301,17 @@ export const TreeTable: React.FC<TreeTableProps> = ({
 
                   {/* Progress Column */}
                   <td className="px-4 py-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-zinc-600 dark:text-zinc-400">
-                          {rollProgress}%
-                        </span>
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                         <div
                           className="h-full rounded-full bg-brand-500 transition-all"
                           style={{ width: `${rollProgress}%` }}
                         />
                       </div>
+                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400 min-w-[2.5rem] text-right">
+                        {rollProgress}%
+                      </span>
                     </div>
-                  </td>
-
-                  {/* Priority Column */}
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`text-lg ${priorityColor}`}
-                      title={`進捗 ${rollProgress}%`}
-                    >
-                      {priorityIcon}
-                    </span>
                   </td>
 
                   {/* Estimated Hours Column */}

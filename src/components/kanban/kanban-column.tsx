@@ -14,6 +14,7 @@ export type KanbanColumnProps = {
   onHeaderDrop?: (columnId: string) => void
   onHeaderKeyReorder?: (columnId: string, dir: -1 | 1) => void
   onOpenTask: (taskId: string) => void
+  onTaskUpdate?: () => void
 }
 
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -26,6 +27,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onHeaderDrop,
   onHeaderKeyReorder,
   onOpenTask,
+  onTaskUpdate,
 }) => {
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -87,7 +89,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       </header>
       <div ref={listRef} className="flex flex-1 flex-col gap-2">
         {orderedTasks.map((t) => (
-          <TaskCard key={t.id} task={t} onClick={onOpenTask} />
+          <TaskCard key={t.id} task={t} onClick={onOpenTask} onTaskUpdate={onTaskUpdate} />
         ))}
       </div>
       <button

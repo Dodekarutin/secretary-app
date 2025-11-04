@@ -6,23 +6,28 @@ const ja: Dict = {
   "common.saving": "保存中...",
   "common.save": "保存する",
   "common.saved": "保存しました",
+  "common.undo": "元に戻す",
+  "common.redo": "やり直す",
 
   // Navigation
   "nav.dashboard": "ダッシュボード",
-  "nav.kanban": "カンバン",
-  "nav.gantt": "ガント",
+  "nav.kanban": "タスクボード",
+  "nav.gantt": "スケジュール",
   "nav.settings": "設定",
   "nav.calendar": "カレンダー",
   "nav.list": "リスト",
   "nav.decompose": "分解",
 
   // Kanban
-  "kanban.title": "カンバン",
+  "kanban.title": "タスクボード",
   "kanban.addTask": "タスクを追加",
   "kanban.reorderHint": "列の並び替えが可能です",
 
   // Task
   "task.due": "期限",
+  "task.complete": "完了にする",
+  "task.uncomplete": "未完了に戻す",
+  "task.completed": "完了",
 
   // Settings
   "settings.title": "設定",
@@ -55,12 +60,12 @@ const ja: Dict = {
   // Dashboard
   "dashboard.title": "ダッシュボード",
   "dashboard.progressSummary": "進捗サマリー",
-  "dashboard.dueSoon": "期限接近",
+  "dashboard.dueSoon": "期限間近",
   "dashboard.overdue": "期限超過",
   "dashboard.none": "該当なし",
 
   // Gantt
-  "gantt.title": "ガント",
+  "gantt.title": "スケジュール",
   "gantt.view": "表示",
   "gantt.startMinus": "開始-1日",
   "gantt.startPlus": "開始+1日",

@@ -3,6 +3,8 @@ import { render, screen } from "@testing-library/react"
 import React from "react"
 import { KanbanBoard } from "@/components/kanban/kanban-board"
 import type { Column, Task } from "@/types/domain"
+import { AdapterProvider } from "@/adapters/adapter-context"
+import { UndoProvider } from "@/lib/undo-context"
 
 describe("KanbanBoard (display)", () => {
   const columns: Column[] = [
@@ -39,15 +41,19 @@ describe("KanbanBoard (display)", () => {
 
   it("列とカードが描画される", () => {
     render(
-      <KanbanBoard
-        projectId="p1"
-        columns={columns}
-        tasksByColumn={tasks}
-        onTaskMove={async () => {}}
-        onColumnReorder={async () => {}}
-        onAddTask={() => {}}
-        onOpenTask={() => {}}
-      />
+      <AdapterProvider>
+        <UndoProvider>
+          <KanbanBoard
+            projectId="p1"
+            columns={columns}
+            tasksByColumn={tasks}
+            onTaskMove={async () => {}}
+            onColumnReorder={async () => {}}
+            onAddTask={() => {}}
+            onOpenTask={() => {}}
+          />
+        </UndoProvider>
+      </AdapterProvider>
     )
 
     expect(screen.getByLabelText("column-To Do")).toBeInTheDocument()

@@ -74,13 +74,7 @@ const TaskListCard: React.FC<TaskListCardProps> = ({
       <div className="mb-4 flex items-center gap-2">
         <span className="text-2xl">{icon}</span>
         <h2 className={`text-lg font-semibold ${accentColor}`}>{title}</h2>
-        {tasks.length > 0 && (
-          <span
-            className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-semibold ${accentColor} bg-current bg-opacity-10`}
-          >
-            {tasks.length}
-          </span>
-        )}
+        {/* カウントバッジは非表示にする */}
       </div>
       {tasks.length === 0 ? (
         <div className="flex items-center gap-2 rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500 dark:bg-zinc-800/50">
@@ -152,6 +146,7 @@ export const DashboardRoot: React.FC = () => {
   const { adapter } = useAdapter();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [columns, setColumns] = useState<any[]>([]);
 
   useEffect(() => {
     const run = async () => {
@@ -159,17 +154,36 @@ export const DashboardRoot: React.FC = () => {
       setProject(p);
       const ts = await adapter.listTasks({ projectId: p.id });
       setTasks(ts);
+      const cols = await adapter.getBoardColumns(p.id);
+      setColumns(cols);
     };
     run();
   }, []);
 
   const stats = useMemo(() => {
+    // 列IDから列名へのマップを作成
+    const columnMap = new Map(columns.map((c) => [c.id, c.name]));
+    
     const total = tasks.length;
-    const done = tasks.filter((t) => (t.progress ?? 0) >= 100).length;
-    const inProgress = tasks.filter(
-      (t) => (t.progress ?? 0) > 0 && (t.progress ?? 0) < 100
-    ).length;
-    const notStarted = tasks.filter((t) => (t.progress ?? 0) === 0).length;
+    
+    // Done列のタスクを完了としてカウント
+    const done = tasks.filter((t) => {
+      const colName = columnMap.get(t.columnId);
+      return colName === "Done";
+    }).length;
+    
+    // Doing列のタスクを進行中としてカウント
+    const inProgress = tasks.filter((t) => {
+      const colName = columnMap.get(t.columnId);
+      return colName === "Doing";
+    }).length;
+    
+    // To Do列のタスクを未着手としてカウント
+    const notStarted = tasks.filter((t) => {
+      const colName = columnMap.get(t.columnId);
+      return colName === "To Do";
+    }).length;
+    
     const pct = total ? Math.round((done / total) * 100) : 0;
 
     const today = new Date();
@@ -204,7 +218,7 @@ export const DashboardRoot: React.FC = () => {
       overdue,
       dueToday,
     };
-  }, [tasks]);
+  }, [tasks, columns]);
 
   return (
     <div className="space-y-6 pb-8">

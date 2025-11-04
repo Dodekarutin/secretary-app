@@ -30,7 +30,7 @@ import {
   listDrafts,
 } from "@/lib/decomposer-storage";
 
-export const DecomposerRoot: React.FC = () => {
+export const DecomposerRoot: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const { adapter } = useAdapter();
   const [project, setProject] = useState<Project | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -280,6 +280,11 @@ export const DecomposerRoot: React.FC = () => {
     // 選択状態をクリア
     setSelected(new Set());
     
+    // モーダルを閉じる
+    if (onClose) {
+      onClose();
+    }
+    
     // カンバン画面に遷移（オプション）
     if (goKanban) navigate("/kanban");
   }
@@ -443,7 +448,7 @@ export const DecomposerRoot: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">{t("decompose.title")}</h1>
+      {/* タイトルはモーダルのヘッダーで表示されるので削除 */}
       {!getRuntimeGeminiApiKey() && (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-200">
           Gemini API キーが未設定です。ローカル分解で継続します。

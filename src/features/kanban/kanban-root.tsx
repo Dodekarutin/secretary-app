@@ -52,20 +52,63 @@ export const KanbanRoot: React.FC = () => {
     setTasks((prev) => [...prev, t]);
   }
 
+  async function refreshTasks() {
+    if (!project) return;
+    const ts = await adapter.listTasks({ projectId: project.id });
+    setTasks(ts);
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-accent-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <h1 className="text-xl font-semibold">
-          {project?.name} / {t("kanban.title")}
+    <div className="space-y-6 pb-8">
+      <div>
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+          {t("kanban.title")}
         </h1>
-        <div className="flex items-center gap-2"></div>
-      </header>
+      </div>
       <KanbanBoard
         projectId={project!.id}
         columns={columns}
         tasksByColumn={tasksByColumn}
         onTaskMove={async (taskId, toColumnId, toIndex) => {
+          // タスクを移動
           await adapter.moveTask(taskId, toColumnId, toIndex);
+          
+          // 移動先の列を判定
+          const targetColumn = columns.find((c) => c.id === toColumnId);
+          const task = tasks.find((t) => t.id === taskId);
+          
+          if (task && targetColumn) {
+            let newProgress: number | undefined;
+            
+            // 列名に応じてprogressを設定
+            switch (targetColumn.name) {
+              case "To Do":
+                // To Do列: 未着手（0%）
+                if (task.progress !== 0) {
+                  newProgress = 0;
+                }
+                break;
+              case "Doing":
+                // Doing列: 進行中（50%）
+                if (task.progress === 0 || task.progress === 100) {
+                  newProgress = 50;
+                }
+                // すでに進行中（1-99%）の場合は変更しない
+                break;
+              case "Done":
+                // Done列: 完了（100%）
+                if (task.progress !== 100) {
+                  newProgress = 100;
+                }
+                break;
+            }
+            
+            // progressを更新
+            if (newProgress !== undefined) {
+              await adapter.updateTask(taskId, { progress: newProgress });
+            }
+          }
+          
           const ts = await adapter.listTasks({ projectId: project!.id });
           setTasks(ts);
         }}
@@ -76,6 +119,7 @@ export const KanbanRoot: React.FC = () => {
         }}
         onAddTask={onAddTask}
         onOpenTask={(taskId) => setOpenTaskId(taskId)}
+        onTaskUpdate={refreshTasks}
       />
       <TaskDrawer
         open={Boolean(openTaskId)}

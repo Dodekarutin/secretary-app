@@ -17,6 +17,7 @@ export type KanbanBoardProps = {
   }
   loading?: boolean
   onOpenTask: (taskId: string) => void
+  onTaskUpdate?: () => void
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -26,6 +27,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onTaskMove,
   onColumnReorder,
   onOpenTask,
+  onTaskUpdate,
 }) => {
   const [dragColId, setDragColId] = useState<string | null>(null)
 
@@ -80,30 +82,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             }}
             onHeaderKeyReorder={(columnId, dir) => moveColumn(columnId, dir)}
             onOpenTask={onOpenTask}
+            onTaskUpdate={onTaskUpdate}
           />
         ))}
-      {/* 簡易的な列並べ替えUI（キーボード操作可能） */}
-      <div className="sr-only" aria-live="polite">{t("kanban.reorderHint")}</div>
-      <div className="fixed bottom-4 right-4 flex gap-2">
-        {orderedColumns.map((c) => (
-          <div key={c.id} className="flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800"
-              onClick={() => moveColumn(c.id, -1)}
-            >
-              ← {c.name}
-            </button>
-            <button
-              type="button"
-              className="rounded bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800"
-              onClick={() => moveColumn(c.id, 1)}
-            >
-              {c.name} →
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* 並べ替えUIを削除 */}
     </div>
   )
 }

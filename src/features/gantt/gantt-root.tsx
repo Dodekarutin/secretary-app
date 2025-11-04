@@ -33,9 +33,9 @@ export const GanttRoot: React.FC = () => {
 
   if (!project) return <div className="p-6">{t("common.loading")}</div>
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-accent-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <h1 className="text-xl font-semibold">{project.name} / {t("gantt.title")}</h1>
+    <div className="space-y-6 pb-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">{t("gantt.title")}</h1>
         <div className="flex items-center gap-2 text-sm">
           <label className="flex items-center gap-2">
             <span className="text-zinc-600 dark:text-zinc-400">{t("gantt.view")}:</span>
@@ -50,7 +50,7 @@ export const GanttRoot: React.FC = () => {
             </select>
           </label>
         </div>
-      </header>
+      </div>
       {/* ツールバー: 選択タスクに対する操作 */}
       <div className="mx-auto mb-3 flex max-w-6xl items-center justify-between px-6">
         <div className="flex items-center gap-3 text-sm">
